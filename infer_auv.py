@@ -166,23 +166,23 @@ def main():
 
         if args.mode == "raw":
             t0  = time.perf_counter()
-            res = model(frame, imgsz=args.imgsz, conf=args.conf, verbose=False)
+            res = model.track(frame, imgsz=args.imgsz, conf=args.conf, persist=True, verbose=False)
             fps_meter.tick(time.perf_counter() - t0)
             combined = make_panel(draw_detections(frame, res), "RAW", fps_meter.fps, (100, 210, 255))
 
         elif args.mode == "inpaint":
             t0  = time.perf_counter()
-            res = model(restored, imgsz=args.imgsz, conf=args.conf, verbose=False)
+            res = model.track(restored, imgsz=args.imgsz, conf=args.conf, persist=True, verbose=False)
             fps_meter.tick(time.perf_counter() - t0)
             combined = make_panel(draw_detections(restored, res), "INPAINTED", fps_meter.fps, (100, 255, 160))
 
         else:  # compare
             t0  = time.perf_counter()
-            r_raw = model(frame,    imgsz=args.imgsz, conf=args.conf, verbose=False)
+            r_raw = model.track(frame,    imgsz=args.imgsz, conf=args.conf, persist=True, verbose=False)
             fps_meter.tick(time.perf_counter() - t0)
 
             t0  = time.perf_counter()
-            r_inp = model(restored, imgsz=args.imgsz, conf=args.conf, verbose=False)
+            r_inp = model.track(restored, imgsz=args.imgsz, conf=args.conf, persist=True, verbose=False)
             fps_meter2.tick(time.perf_counter() - t0)
 
             p_raw = make_panel(draw_detections(frame,    r_raw), "RAW",       fps_meter.fps,  (100, 210, 255))
