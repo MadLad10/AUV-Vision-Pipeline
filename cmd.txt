@@ -1,0 +1,7 @@
+cd Testing-yolo26
+python -m venv .venv
+.venv\Scripts\activate
+python split_dataset.py --input C:\Users\T2520872\Downloads\april17 --output C:\Users\T2520872\Downloads\april17_split --classes gate flare
+python prune_yolo26.py --weights C:\Users\T2520872\Testing-yolo26\runs\detect\runs\train\yolo26n_custom4\weights\best.pt --data C:\Users\T2520872\Downloads\april17_split\data.yaml --device 0
+python benchmark.py --base C:\Users\T2520872\Testing-yolo26\runs\detect\runs\train\yolo26n_custom4\weights\best.pt --pruned C:\Users\T2520872\Testing-yolo26\runs\detect\runs\prune\yolo26n_pruned_ft\weights\best.pt --data C:\Users\T2520872\Downloads\april17_split\data.yaml --device 0
+

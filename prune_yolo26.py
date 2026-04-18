@@ -102,7 +102,7 @@ def prune_model(
         importance=tp.importance.BNScaleImportance(),
         pruning_ratio=pruning_ratio,
         ignored_layers=ignored,
-        round_to=8,      # keep channel counts as multiples of 8 (Tensor Core alignment)
+        round_to=1,      # keep channel counts as multiples of 8 (Tensor Core alignment)
     )
 
     print(f"\nPruning  (ratio={pruning_ratio}) ...")
