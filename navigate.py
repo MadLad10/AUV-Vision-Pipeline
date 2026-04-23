@@ -76,8 +76,8 @@ C_BLACK  = (0,     0,   0)
 
 STATE_STYLE = {
     "SEARCHING":      ("SEARCHING",            C_GRAY),
-    "ALIGNING_LEFT":  ("STRAFE LEFT",          C_YELLOW),
-    "ALIGNING_RIGHT": ("STRAFE RIGHT",         C_YELLOW),
+    "ALIGNING_LEFT":  ("YAW LEFT",             C_YELLOW),
+    "ALIGNING_RIGHT": ("YAW RIGHT",            C_YELLOW),
     "APPROACH":       ("ALIGNED  →  FORWARD",  C_GREEN),
     "RECOVER_LEFT":   ("MOVE LEFT  (bar only)", C_ORANGE),
     "RECOVER_RIGHT":  ("MOVE RIGHT (bar only)", C_ORANGE),
