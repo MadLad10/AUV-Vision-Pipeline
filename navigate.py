@@ -23,6 +23,7 @@ Usage:
 import argparse
 import csv
 import math
+import subprocess
 import time
 from collections import deque
 from pathlib import Path
@@ -227,7 +228,7 @@ def draw_direction_arrow(frame, state, iw, ih):
 
 
 def draw_debug_strip(frame, state, err_x, aspect, fill, conf, track_id, fps, ih, iw):
-    txt = (f"state:{state}  err:{err_x:+.2f}  aspect:{aspect:.2f}"
+    txt = (f"state:{state}  yaw:{err_x:+.2f}  aspect:{aspect:.2f}"
            f"  fill:{fill:.2f}  conf:{conf:.2f}  id:{track_id}  fps:{fps:.1f}")
     cv2.rectangle(frame, (0, ih - 28), (iw, ih), C_BLACK, -1)
     cv2.putText(frame, txt, (6, ih - 8), MONO, 1.0, C_GRAY, 1, cv2.LINE_AA)
@@ -260,11 +261,17 @@ def main():
     ih      = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     print(f"Source : {args.source}  ({iw}×{ih} @ {fps_src:.1f} fps)")
 
-    writer = None
+    ffmpeg_proc = None
     if args.save:
         Path(args.save).parent.mkdir(parents=True, exist_ok=True)
-        writer = cv2.VideoWriter(args.save, cv2.VideoWriter_fourcc(*"avc1"),
-                                 fps_src, (iw, ih))
+        ffmpeg_proc = subprocess.Popen([
+            "ffmpeg", "-y",
+            "-f", "rawvideo", "-vcodec", "rawvideo",
+            "-s", f"{iw}x{ih}", "-pix_fmt", "bgr24", "-r", str(fps_src),
+            "-i", "pipe:",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast",
+            args.save,
+        ], stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
         print(f"Saving to : {args.save}")
 
     log_file = log_writer = None
@@ -290,7 +297,7 @@ def main():
             break
 
         results = model.track(frame, persist=True, conf=args.conf,
-                              imgsz=args.imgsz, verbose=False)
+                              imgsz=args.imgsz, device=args.device, verbose=False)
 
         r       = results[0]
         has_ids = r.boxes.id is not None
@@ -358,8 +365,8 @@ def main():
                                  f"{best_conf:.3f}", best_tid])
 
         cv2.imshow("AUV Navigation", out)
-        if writer:
-            writer.write(out)
+        if ffmpeg_proc:
+            ffmpeg_proc.stdin.write(out.tobytes())
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
@@ -371,8 +378,9 @@ def main():
             snap_idx += 1
 
     cap.release()
-    if writer:
-        writer.release()
+    if ffmpeg_proc:
+        ffmpeg_proc.stdin.close()
+        ffmpeg_proc.wait()
         print(f"Video saved: {args.save}")
     if log_file:
         log_file.close()
