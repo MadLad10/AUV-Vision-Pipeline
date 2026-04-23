@@ -152,7 +152,7 @@ def solve_gate_pose(x1, y1, x2, y2, gate_3d, cam_K):
     ok, rvec, tvec = cv2.solvePnP(gate_3d, pts_2d, cam_K, dist_c)
     if not ok:
         return None, None, None
-    tx, ty, tz = float(tvec[0]), float(tvec[1]), float(tvec[2])
+    tx, ty, tz = tvec.flatten().tolist()
     distance  = math.sqrt(tx**2 + ty**2 + tz**2)
     yaw_deg   = math.degrees(math.atan2(tx,  tz))
     pitch_deg = math.degrees(math.atan2(-ty, tz))
