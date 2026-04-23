@@ -75,14 +75,16 @@ C_CYAN   = (255, 210,   0)
 C_BLACK  = (0,     0,   0)
 
 STATE_STYLE = {
-    "SEARCHING":      ("SEARCHING",            C_GRAY),
-    "ALIGNING_LEFT":  ("YAW LEFT",             C_YELLOW),
-    "ALIGNING_RIGHT": ("YAW RIGHT",            C_YELLOW),
-    "APPROACH":       ("ALIGNED  →  FORWARD",  C_GREEN),
-    "RECOVER_LEFT":   ("MOVE LEFT  (bar only)", C_ORANGE),
-    "RECOVER_RIGHT":  ("MOVE RIGHT (bar only)", C_ORANGE),
-    "OVERSHOOT":      ("BACK UP + REALIGN",     C_RED),
-    "PASS_THROUGH":   ("PASS THROUGH",          C_LGREEN),
+    "SEARCHING":       ("SEARCHING",              C_GRAY),
+    "ALIGNING_LEFT":   ("YAW LEFT",               C_YELLOW),
+    "ALIGNING_RIGHT":  ("YAW RIGHT",              C_YELLOW),
+    "APPROACH":        ("ALIGNED  →  FORWARD",    C_GREEN),
+    "RECOVER_LEFT":    ("MOVE LEFT  (bar only)",  C_ORANGE),
+    "RECOVER_RIGHT":   ("MOVE RIGHT (bar only)",  C_ORANGE),
+    "OVERSHOOT_LEFT":  ("BACK UP + YAW RIGHT",    C_RED),
+    "OVERSHOOT_RIGHT": ("BACK UP + YAW LEFT",     C_RED),
+    "OVERSHOOT":       ("BACK UP",                C_RED),
+    "PASS_THROUGH":    ("PASS THROUGH",           C_LGREEN),
 }
 
 
@@ -162,7 +164,10 @@ def decide(err_x, aspect, fill, args) -> str:
 
     if bar_only:
         if fill >= args.fill_overshoot:
-            return "OVERSHOOT"
+            # Too close — back up with lateral correction
+            if abs(err_x) < args.err_center:
+                return "OVERSHOOT"           # centered but too close
+            return "OVERSHOOT_LEFT" if err_x < 0 else "OVERSHOOT_RIGHT"
         # Bar on left side of frame → right bar visible → move left
         return "RECOVER_LEFT" if err_x < 0 else "RECOVER_RIGHT"
 
@@ -212,19 +217,28 @@ def draw_direction_arrow(frame, state, iw, ih):
     arm    = 60
 
     arrows = {
-        "ALIGNING_LEFT":  ((mx - arm, my), (mx - arm * 3, my)),
-        "ALIGNING_RIGHT": ((mx + arm, my), (mx + arm * 3, my)),
-        "APPROACH":       ((mx, my + arm), (mx, my - arm * 2)),
-        "RECOVER_LEFT":   ((mx - arm, my), (mx - arm * 3, my)),
-        "RECOVER_RIGHT":  ((mx + arm, my), (mx + arm * 3, my)),
-        "OVERSHOOT":      ((mx, my - arm), (mx, my + arm * 2)),
-        "PASS_THROUGH":   ((mx, my + arm), (mx, my - arm * 2)),
+        "ALIGNING_LEFT":   ((mx - arm, my),       (mx - arm * 3, my)),
+        "ALIGNING_RIGHT":  ((mx + arm, my),        (mx + arm * 3, my)),
+        "APPROACH":        ((mx, my + arm),         (mx, my - arm * 2)),
+        "RECOVER_LEFT":    ((mx - arm, my),        (mx - arm * 3, my)),
+        "RECOVER_RIGHT":   ((mx + arm, my),         (mx + arm * 3, my)),
+        "OVERSHOOT":       ((mx, my - arm),         (mx, my + arm * 2)),
+        "OVERSHOOT_LEFT":  ((mx, my - arm),         (mx, my + arm * 2)),
+        "OVERSHOOT_RIGHT": ((mx, my - arm),         (mx, my + arm * 2)),
+        "PASS_THROUGH":    ((mx, my + arm),         (mx, my - arm * 2)),
     }
 
     if state in arrows:
         _, color = STATE_STYLE[state]
         start, end = arrows[state]
         cv2.arrowedLine(frame, start, end, color, 4, cv2.LINE_AA, tipLength=0.3)
+        # Extra lateral arrow for directional overshoot
+        if state == "OVERSHOOT_LEFT":
+            cv2.arrowedLine(frame, (mx + arm, my), (mx + arm * 3, my),
+                            color, 4, cv2.LINE_AA, tipLength=0.3)
+        elif state == "OVERSHOOT_RIGHT":
+            cv2.arrowedLine(frame, (mx - arm, my), (mx - arm * 3, my),
+                            color, 4, cv2.LINE_AA, tipLength=0.3)
 
 
 def draw_debug_strip(frame, state, err_x, aspect, fill, conf, track_id, fps, ih, iw):
