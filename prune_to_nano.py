@@ -119,12 +119,19 @@ def finetune(ckpt_path: Path, args, round_name: str) -> Path:
         save_period   = -1,
         val           = True,
         plots         = True,
-        project       = args.project,
+        project       = str(Path(args.project).resolve()),
         name          = round_name,
         exist_ok      = False,
     )
-    best = Path(args.project) / round_name / "weights" / "best.pt"
-    return best
+    # Ultralytics sometimes nests under runs/detect/ — search both locations
+    candidates = [
+        Path(args.project) / round_name / "weights" / "best.pt",
+        Path("runs/detect") / args.project / round_name / "weights" / "best.pt",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return candidates[0]
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +186,8 @@ def main() -> None:
         current_weights = finetune(ckpt_path, args, round_name)
 
         if not current_weights.exists():
-            print(f"[WARN] Fine-tuned weights not found at {current_weights}. Stopping.")
+            print(f"[WARN] Fine-tuned weights not found at {current_weights}.")
+            print("       Check runs/detect/ subfolder manually.")
             break
 
         print(f"\nRound {rnd} complete. Weights: {current_weights}")
