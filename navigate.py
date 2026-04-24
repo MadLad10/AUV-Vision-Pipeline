@@ -276,17 +276,23 @@ def main():
     print(f"Source : {args.source}  ({iw}×{ih} @ {fps_src:.1f} fps)")
 
     ffmpeg_proc = None
+    cv_writer   = None
     if args.save:
         Path(args.save).parent.mkdir(parents=True, exist_ok=True)
-        ffmpeg_proc = subprocess.Popen([
-            "ffmpeg", "-y",
-            "-f", "rawvideo", "-vcodec", "rawvideo",
-            "-s", f"{iw}x{ih}", "-pix_fmt", "bgr24", "-r", str(fps_src),
-            "-i", "pipe:",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast",
-            args.save,
-        ], stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        print(f"Saving to : {args.save}")
+        try:
+            ffmpeg_proc = subprocess.Popen([
+                "ffmpeg", "-y",
+                "-f", "rawvideo", "-vcodec", "rawvideo",
+                "-s", f"{iw}x{ih}", "-pix_fmt", "bgr24", "-r", str(fps_src),
+                "-i", "pipe:",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast",
+                args.save,
+            ], stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            print(f"Saving to : {args.save} (ffmpeg)")
+        except FileNotFoundError:
+            cv_writer = cv2.VideoWriter(args.save, cv2.VideoWriter_fourcc(*"mp4v"),
+                                        fps_src, (iw, ih))
+            print(f"Saving to : {args.save} (cv2 fallback)")
 
     log_file = log_writer = None
     if args.log:

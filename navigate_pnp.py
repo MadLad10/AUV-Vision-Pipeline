@@ -269,15 +269,21 @@ def main():
     print(f"Gate: {gw}m × {gh}m  |  Camera FOV: {args.cam_fov}°")
 
     ffmpeg_proc = None
+    cv_writer   = None
     if args.save:
         Path(args.save).parent.mkdir(parents=True, exist_ok=True)
-        ffmpeg_proc = subprocess.Popen([
-            "ffmpeg", "-y", "-f", "rawvideo", "-vcodec", "rawvideo",
-            "-s", f"{iw}x{ih}", "-pix_fmt", "bgr24", "-r", str(fps_src),
-            "-i", "pipe:", "-c:v", "libx264", "-pix_fmt", "yuv420p",
-            "-preset", "fast", args.save,
-        ], stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        print(f"Saving to: {args.save}")
+        try:
+            ffmpeg_proc = subprocess.Popen([
+                "ffmpeg", "-y", "-f", "rawvideo", "-vcodec", "rawvideo",
+                "-s", f"{iw}x{ih}", "-pix_fmt", "bgr24", "-r", str(fps_src),
+                "-i", "pipe:", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-preset", "fast", args.save,
+            ], stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            print(f"Saving to: {args.save} (ffmpeg)")
+        except FileNotFoundError:
+            cv_writer = cv2.VideoWriter(args.save, cv2.VideoWriter_fourcc(*"mp4v"),
+                                        fps_src, (iw, ih))
+            print(f"Saving to: {args.save} (cv2 fallback)")
 
     log_file = log_writer = None
     if args.log:
@@ -367,6 +373,8 @@ def main():
         cv2.imshow("AUV Navigation PnP", out)
         if ffmpeg_proc:
             ffmpeg_proc.stdin.write(out.tobytes())
+        elif cv_writer:
+            cv_writer.write(out)
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
@@ -381,6 +389,9 @@ def main():
     if ffmpeg_proc:
         ffmpeg_proc.stdin.close()
         ffmpeg_proc.wait()
+        print(f"Video saved: {args.save}")
+    elif cv_writer:
+        cv_writer.release()
         print(f"Video saved: {args.save}")
     if log_file:
         log_file.close()
