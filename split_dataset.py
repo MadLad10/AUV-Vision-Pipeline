@@ -23,7 +23,7 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="85/5/10 YOLO dataset splitter")
-    p.add_argument("--input", required=True, help="CVAT YOLO export directory")
+    p.add_argument("--input", required=True, nargs="+", help="One or more CVAT YOLO export directories")
     p.add_argument("--output", required=True, help="Output directory for split dataset")
     p.add_argument("--train", type=float, default=0.85)
     p.add_argument("--val",   type=float, default=0.05)
@@ -136,18 +136,23 @@ def main() -> None:
     if abs(total - 1.0) > 1e-6:
         raise ValueError(f"--train + --val + --test must equal 1.0 (got {total:.4f})")
 
-    input_dir  = Path(args.input)
+    input_dirs = [Path(d) for d in args.input]
     output_dir = Path(args.output)
 
-    if not input_dir.exists():
-        raise FileNotFoundError(f"Input directory not found: {input_dir}")
+    for d in input_dirs:
+        if not d.exists():
+            raise FileNotFoundError(f"Input directory not found: {d}")
 
-    # 1. Collect pairs
-    print(f"[1/4] Scanning '{input_dir}' for image-label pairs ...")
-    pairs = collect_pairs(input_dir)
+    # 1. Collect pairs from all input directories
+    pairs = []
+    for input_dir in input_dirs:
+        print(f"[1/4] Scanning '{input_dir}' for image-label pairs ...")
+        p = collect_pairs(input_dir)
+        print(f"      Found {len(p)} pairs.")
+        pairs.extend(p)
     if not pairs:
         raise ValueError("No valid image-label pairs found. Check --input path.")
-    print(f"      Found {len(pairs)} pairs.")
+    print(f"      Total: {len(pairs)} pairs.")
 
     # 2. Shuffle
     print(f"[2/4] Shuffling with seed={args.seed} ...")
@@ -174,7 +179,7 @@ def main() -> None:
 
     # 4. data.yaml
     print("[4/4] Generating data.yaml ...")
-    class_names = args.classes or detect_class_names(input_dir)
+    class_names = args.classes or detect_class_names(input_dirs[0])
     if not class_names:
         print("  [WARN] Could not detect class names.")
         print("         Using placeholder ['class0']. Edit data.yaml before training.")
