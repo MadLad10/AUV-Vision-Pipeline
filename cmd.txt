@@ -1,7 +1,128 @@
-cd Testing-yolo26
-python -m venv .venv
-.venv\Scripts\activate
-python split_dataset.py --input C:\Users\T2520872\Downloads\april17 --output C:\Users\T2520872\Downloads\april17_split --classes gate flare
-python prune_yolo26.py --weights C:\Users\T2520872\Testing-yolo26\runs\detect\runs\train\yolo26n_custom4\weights\best.pt --data C:\Users\T2520872\Downloads\april17_split\data.yaml --device 0
-python benchmark.py --base C:\Users\T2520872\Testing-yolo26\runs\detect\runs\train\yolo26n_custom4\weights\best.pt --pruned C:\Users\T2520872\Testing-yolo26\runs\detect\runs\prune\yolo26n_pruned_ft\weights\best.pt --data C:\Users\T2520872\Downloads\april17_split\data.yaml --device 0
+# ─── Setup ────────────────────────────────────────────────────────────────────
+cd /home/yaad/yaad_ws/Testing-yolo26
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
+# ─── split_video.py — extract frames from a video and zip for CVAT ───────────
+# Interactive (prompts for frame count, parts, output dir):
+python split_video.py /home/yaad/Downloads/gate\ 1.webm
+
+# Non-interactive with flags:
+python split_video.py /home/yaad/Downloads/gate\ 1.webm \
+    -o /home/yaad/Dataset_final_run/splits/gate1 \
+    --zip-only
+
+# ─── prepare_dataset.py — merge annotated folders + train/val/test split ─────
+python prepare_dataset.py \
+    --input "/home/yaad/Dataset_final_run/June 2 Gate/gate_june2_yaad" \
+    --output /home/yaad/Dataset_final_run/merged_dataset \
+    --classes gate torpedo rescue repair \
+    --train 0.85 --val 0.05 --test 0.10
+
+# ─── split_dataset.py — split a single CVAT YOLO export ──────────────────────
+python split_dataset.py \
+    --input "/home/yaad/Dataset_final_run/June 2 Gate/gate_june2_yaad" \
+    --output /home/yaad/Dataset_final_run/split_out \
+    --train 0.85 --val 0.05 --test 0.10
+
+# ─── tune_yolo.py — hyperparameter tuning (run before training) ──────────────
+python tune_yolo.py \
+    --data /home/yaad/Dataset_final_run/split_out/data.yaml \
+    --model yolo11n.pt \
+    --epochs 30 --iterations 50 \
+    --device 0 --batch 16 --imgsz 640
+
+# ─── train_yolo26.py — train YOLO26n (nano, Jetson-ready) ────────────────────
+python train_yolo26.py \
+    --data /home/yaad/Dataset_final_run/split_out/data.yaml \
+    --model yolo26n.pt \
+    --epochs 100 --patience 20 --imgsz 640 \
+    --batch 16 --device 0 \
+    --name yolo26n_custom
+
+# ─── train_yolo26m.py — train YOLO26m (medium) ───────────────────────────────
+python train_yolo26m.py \
+    --data /home/yaad/Dataset_final_run/split_out/data.yaml \
+    --model yolo26m.pt \
+    --epochs 100 --patience 20 --imgsz 640 \
+    --batch 8 --device 0 \
+    --name yolo26m_custom
+
+# ─── train_yolo11.py — train YOLO11n ─────────────────────────────────────────
+python train_yolo11.py \
+    --data /home/yaad/Dataset_final_run/split_out/data.yaml \
+    --model yolo11n.pt \
+    --epochs 100 --patience 20 --imgsz 640 \
+    --batch 16 --device 0 \
+    --name yolo11n_custom
+
+# with hyperparameters from tune_yolo.py:
+python train_yolo11.py \
+    --data /home/yaad/Dataset_final_run/split_out/data.yaml \
+    --cfg runs/tune/tune_result/best_hyperparameters.yaml \
+    --model yolo11n.pt \
+    --epochs 100 --device 0
+
+# ─── prune_yolo26.py — structured pruning of a trained YOLO26n ───────────────
+python prune_yolo26.py \
+    --weights runs/detect/runs/train/yolo26n_custom/weights/best.pt \
+    --data /home/yaad/Dataset_final_run/split_out/data.yaml \
+    --pruning-ratio 0.30 --finetune-epochs 25 \
+    --device 0 --name yolo26n_pruned
+
+# ─── prune_to_nano.py — iteratively shrink YOLO26m → nano-equivalent ─────────
+python prune_to_nano.py \
+    --weights runs/detect/runs/train/yolo26m_custom/weights/best.pt \
+    --data /home/yaad/Dataset_final_run/split_out/data.yaml \
+    --rounds 2 --ratio-per-round 0.40 --finetune-epochs 20 \
+    --device 0 --name yolo26m_to_nano
+
+# ─── benchmark.py — compare base vs pruned model ─────────────────────────────
+python benchmark.py \
+    --base    runs/detect/runs/train/yolo26n_custom/weights/best.pt \
+    --pruned  runs/detect/runs/prune/yolo26n_pruned/weights/best.pt \
+    --data    /home/yaad/Dataset_final_run/split_out/data.yaml \
+    --device 0
+
+# ─── infer_auv_new.py — quick hardcoded inference (edit WEIGHTS/SOURCE inside) ──
+# Edit the top of infer_auv_new.py to set WEIGHTS and SOURCE, then:
+python infer_auv_new.py
+
+# ─── infer_auv.py — full inference with CLI args ──────────────────────────────
+# raw mode:
+python infer_auv.py \
+    --source  /home/yaad/Downloads/gate_updated_june4.pt \
+    --weights /home/yaad/Downloads/gate_updated_june4.pt \
+    --conf 0.25 --mode raw
+
+# with inpainting and save:
+python infer_auv.py \
+    --source  /home/yaad/Downloads/9may_gate_torpedo.webm \
+    --weights /home/yaad/Downloads/gate_updated_june4.pt \
+    --conf 0.30 --mode inpaint \
+    --save /home/yaad/Downloads/gate_output.mp4
+
+# ─── navigate.py — gate navigation overlay ───────────────────────────────────
+python navigate.py \
+    --weights /home/yaad/Downloads/gate_updated_june4.pt \
+    --source  /home/yaad/Downloads/9may_gate_torpedo.webm \
+    --conf 0.50 --device 0 \
+    --save /home/yaad/Downloads/gate_nav.mp4 \
+    --log  /home/yaad/Downloads/gate_nav.csv
+
+# ─── navigate_orb.py — gate navigation with ORB feature matching ─────────────
+python navigate_orb.py \
+    --weights /home/yaad/Downloads/gate_updated_june4.pt \
+    --source  /home/yaad/Downloads/9may_gate_torpedo.webm \
+    --conf 0.50 --device 0 \
+    --orb-features 500 --match-ratio 0.75 \
+    --save /home/yaad/Downloads/gate_orb.mp4
+
+# ─── navigate_pnp.py — gate navigation with PnP pose estimation ──────────────
+python navigate_pnp.py \
+    --weights /home/yaad/Downloads/gate_updated_june4.pt \
+    --source  /home/yaad/Downloads/9may_gate_torpedo.webm \
+    --conf 0.50 --device 0 \
+    --gate-width 3.0 --gate-height 1.5 --cam-fov 60.0 \
+    --save /home/yaad/Downloads/gate_pnp.mp4
