@@ -41,12 +41,20 @@ def parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 
 def detect_class_names(input_dir: Path) -> list[str]:
-    """Search for CVAT obj.names or classes.txt and return the class list."""
+    """Search for CVAT obj.names, classes.txt, or data.yaml and return the class list."""
     for name in ("obj.names", "classes.txt", "data.names"):
         for path in input_dir.rglob(name):
             lines = [l.strip() for l in path.read_text().splitlines() if l.strip()]
             if lines:
                 return lines
+    for path in input_dir.rglob("data.yaml"):
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        names = data.get("names")
+        if names:
+            if isinstance(names, dict):
+                return [names[k] for k in sorted(names.keys())]
+            return list(names)
     return []
 
 

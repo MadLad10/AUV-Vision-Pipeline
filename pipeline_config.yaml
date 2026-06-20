@@ -1,0 +1,26 @@
+n8n:
+  url: "http://localhost:5678"
+  api_key: ""                        # n8n → Settings → API → Create API Key
+  send_webhook: "auv-pipeline-send"  # must match Webhook node path in n8n
+  callback_port: 9876                # pipeline listens here for n8n callback
+  timeout_hours: 48
+
+annotators:
+  - name: Annotator 1
+    email: annotator1@example.com
+  - name: Annotator 2
+    email: annotator2@example.com
+  # Add more — each gets one zip part
+
+training:
+  epochs: 200
+  batch: 16
+  patience: 50
+  imgsz: 640
+  device: "0"
+
+split:
+  train: 0.85
+  val: 0.05
+  test: 0.10
+  seed: 42

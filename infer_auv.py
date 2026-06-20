@@ -43,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dilate-ksize",   type=int, default=5)
     p.add_argument("--inpaint-radius", type=int, default=3)
     p.add_argument("--save", default=None, help="Output video path (e.g. out.mp4)")
+    p.add_argument("--fps",  type=float, default=None, help="Override output FPS (useful when source FPS metadata is wrong)")
     return p.parse_args()
 
 
@@ -72,6 +73,20 @@ def inpaint_frame(frame_bgr, mask, inpaint_radius):
 
 LABEL_H   = 30
 FONT      = cv2.FONT_HERSHEY_SIMPLEX
+
+CLASS_COLORS = [
+    (0,   255,   0),   # green
+    (255,  80,  80),   # blue
+    (0,   200, 255),   # yellow
+    (255,   0, 200),   # pink
+    (0,   165, 255),   # orange
+    (180,   0, 255),   # purple
+    (255, 255,   0),   # cyan
+    (0,   255, 180),   # mint
+]
+
+def class_color(cls: int):
+    return CLASS_COLORS[cls % len(CLASS_COLORS)]
 
 
 class BoxSmoother:
@@ -112,8 +127,10 @@ def draw_detections(frame, results, smoother=None):
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             label = f"{r.names[cls]} {conf:.2f}"
 
-        cv2.rectangle(out, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(out, label, (x1, max(y1 - 6, 14)), FONT, 0.55, (0, 255, 0), 1, cv2.LINE_AA)
+        color = class_color(cls)
+        cv2.rectangle(out, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(out, label, (x1, max(y1 - 8, 18)), FONT, 0.9, (0, 0, 0), 4, cv2.LINE_AA)
+        cv2.putText(out, label, (x1, max(y1 - 8, 18)), FONT, 0.9, color, 2, cv2.LINE_AA)
     return out
 
 
@@ -164,9 +181,12 @@ def main():
         raise RuntimeError(f"Cannot open source: {args.source}")
 
     fps_src = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps_out = args.fps if args.fps else (fps_src if fps_src <= 120 else 30.0)
     w_src   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h_src   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     print(f"Source : {args.source}  ({w_src}×{h_src} @ {fps_src:.1f} FPS)  mode={args.mode}")
+    if fps_src != fps_out:
+        print(f"Output FPS clamped to {fps_out:.1f} (source reported {fps_src:.1f})")
 
     compare = args.mode == "compare"
     out_w   = w_src * 2 if compare else w_src
@@ -175,7 +195,7 @@ def main():
     writer = None
     if args.save:
         Path(args.save).parent.mkdir(parents=True, exist_ok=True)
-        writer = cv2.VideoWriter(args.save, cv2.VideoWriter_fourcc(*"mp4v"), fps_src, (out_w, out_h))
+        writer = cv2.VideoWriter(args.save, cv2.VideoWriter_fourcc(*"mp4v"), fps_out, (out_w, out_h))
         print(f"Saving to : {args.save}")
 
     fps_meter    = FPSMeter()
@@ -199,13 +219,13 @@ def main():
 
         if args.mode == "raw":
             t0  = time.perf_counter()
-            res = model.track(frame, imgsz=args.imgsz, conf=args.conf, persist=True, verbose=False)
+            res = model.track(frame, imgsz=args.imgsz, conf=args.conf, persist=True, verbose=False, tracker="bytetrack.yaml")
             fps_meter.tick(time.perf_counter() - t0)
             combined = make_panel(draw_detections(frame, res, smoother), "RAW", fps_meter.fps, (100, 210, 255))
 
         elif args.mode == "inpaint":
             t0  = time.perf_counter()
-            res = model.track(restored, imgsz=args.imgsz, conf=args.conf, persist=True, verbose=False)
+            res = model.track(restored, imgsz=args.imgsz, conf=args.conf, persist=True, verbose=False, tracker="bytetrack.yaml")
             fps_meter.tick(time.perf_counter() - t0)
             combined = make_panel(draw_detections(restored, res, smoother), "INPAINTED", fps_meter.fps, (100, 255, 160))
 
@@ -215,7 +235,7 @@ def main():
             fps_meter.tick(time.perf_counter() - t0)
 
             t0  = time.perf_counter()
-            r_inp = model.track(restored, imgsz=args.imgsz, conf=args.conf, persist=True, verbose=False)
+            r_inp = model.track(restored, imgsz=args.imgsz, conf=args.conf, persist=True, verbose=False, tracker="bytetrack.yaml")
             fps_meter2.tick(time.perf_counter() - t0)
 
             p_raw = make_panel(draw_detections(frame,    r_raw, smoother),  "RAW",       fps_meter.fps,  (100, 210, 255))
