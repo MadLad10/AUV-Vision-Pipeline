@@ -204,7 +204,14 @@ def main():
     smoother2    = BoxSmoother(alpha=0.6)
     snapshot_idx = 0
 
-    cv2.namedWindow("AUV Inference", cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+    display = True
+    if args.save:
+        try:
+            cv2.namedWindow("AUV Inference", cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+        except cv2.error:
+            display = False
+    else:
+        cv2.namedWindow("AUV Inference", cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
     print("\nRunning — press  q  to quit,  s  to snapshot\n")
 
     while True:
@@ -242,24 +249,27 @@ def main():
             p_inp = make_panel(draw_detections(restored, r_inp, smoother2), "INPAINTED", fps_meter2.fps, (100, 255, 160))
             combined = cv2.hconcat([p_raw, p_inp])
 
-        cv2.imshow("AUV Inference", combined)
+        if display:
+            cv2.imshow("AUV Inference", combined)
         if writer:
             writer.write(combined)
 
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord("q"):
-            break
-        elif key == ord("s"):
-            snap = f"snapshot_{snapshot_idx:04d}.png"
-            cv2.imwrite(snap, combined)
-            print(f"  Snapshot saved: {snap}")
-            snapshot_idx += 1
+        if display:
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord("q"):
+                break
+            elif key == ord("s"):
+                snap = f"snapshot_{snapshot_idx:04d}.png"
+                cv2.imwrite(snap, combined)
+                print(f"  Snapshot saved: {snap}")
+                snapshot_idx += 1
 
     cap.release()
     if writer:
         writer.release()
         print(f"\nVideo saved: {args.save}")
-    cv2.destroyAllWindows()
+    if display:
+        cv2.destroyAllWindows()
     print("Done.")
 
 

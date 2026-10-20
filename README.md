@@ -1,231 +1,226 @@
-# BRACU Duburi · AUV Vision Pipeline
+# BRACU Duburi — AUV Vision Pipeline
 
 [![CI](https://github.com/MadLad10/Testing-yolo26/actions/workflows/ci.yml/badge.svg)](https://github.com/MadLad10/Testing-yolo26/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
-![Ultralytics](https://img.shields.io/badge/ultralytics-%E2%89%A58.4-purple)
-![Target](https://img.shields.io/badge/target-Jetson%20Orin%20Nano-76b900)
 
-Real-time object detection for the BRACU Duburi AUV (RoboSub). The pipeline takes a labelled
-CVAT export to a pruned, TensorRT-compiled YOLO model running on a **Jetson Orin Nano 8 GB**,
-with augmentation designed around how underwater images actually form.
+This is the vision system for BRACU Duburi's autonomous underwater vehicle (AUV) at RoboSub.
+It covers the whole path from raw dive video to a small, fast object detector running on the
+vehicle's Jetson Orin Nano, plus the ROS 2 node that detects and tracks targets live and tells
+the controller where they are.
+
+---
+
+## How the pipeline works
 
 ```mermaid
 flowchart LR
-    A[CVAT export] --> B[split_dataset.py]
-    B --> C{{check}}
-    C --> D[1 · Underwater<br/>augmentation]
-    D --> E[2 · Train<br/>YOLO26n / YOLO11n]
-    E --> F[3 · Structured<br/>pruning + fine-tune]
-    F --> G[4 · Export<br/>ONNX / TensorRT FP16·INT8]
-    G --> H[5 · Benchmark]
-    H --> I[Jetson Orin Nano]
+    A[Dive video] --> B[Label in CVAT]
+    B --> C[Split dataset]
+    C --> D[Underwater<br/>augmentation]
+    D --> E[Train]
+    E --> F[Prune]
+    F --> G[Convert to<br/>TensorRT]
+    G --> H[Benchmark]
+    H --> I[ROS 2 vision node<br/>detect + ByteTrack]
 ```
 
-Every stage is one subcommand of a single CLI, driven by YAML configs:
+1. **Collect and label data.** Frames are pulled from dive videos (`split_video.py`) and labelled in CVAT.
+2. **Split the dataset.** `split_dataset.py` merges one or more CVAT exports and splits them into training (85%), validation (5%) and test (10%) sets, writing the `data.yaml` that training needs. A dataset check then catches broken labels before any GPU time is spent.
+3. **Underwater augmentation.** During training, every image is randomly altered to look like it was taken in different water. Colours fade with depth, the water gets hazier, light ripples on the floor, particles float past, and the camera shakes. The model then copes with conditions it never saw in the training videos.
+4. **Train.** A YOLO detector is trained from a preset that says which model, image size, number of epochs and augmentation to use. After training it is scored on the held-out test set.
+5. **Prune.** Whole channels the network barely uses are removed, so the model gets smaller and faster. It is then trained a little longer to recover any lost accuracy. This can be done in one step, or in several rounds to shrink a medium model down to nano size.
+6. **Convert to TensorRT.** The model is exported to ONNX and compiled into a TensorRT engine (FP16, or INT8 for extra speed) that runs efficiently on the Jetson.
+7. **Benchmark.** Models are compared side by side on accuracy, size and speed, for example before and after pruning.
+8. **Run on the vehicle.** The ROS 2 vision node runs the detector on the camera feed, follows each object from frame to frame with ByteTrack, and publishes the target's position for the controller to steer towards.
+
+Every step from 2 to 7 is one command:
 
 ```bash
-python -m auv_pipeline presets                 # list training presets + augment profiles
-python -m auv_pipeline check     --data data.yaml
-python -m auv_pipeline augment   --profile physics --images dataset/images/train
-python -m auv_pipeline train     --data data.yaml --preset yolo26n --augment physics
+python -m auv_pipeline check     --data data.yaml                                  # dataset check
+python -m auv_pipeline augment   --profile physics --images dataset/images/train   # preview augmentation
+python -m auv_pipeline train     --data data.yaml --preset yolo11n
 python -m auv_pipeline prune     --weights best.pt --data data.yaml --ratio 0.3
-python -m auv_pipeline export    --weights pruned.pt --formats engine --int8 --data data.yaml
+python -m auv_pipeline export    --weights pruned.pt --formats onnx engine
 python -m auv_pipeline benchmark --models best.pt pruned.pt --data data.yaml
-python -m auv_pipeline run       --data data.yaml --preset yolo26n   # all of the above
+python -m auv_pipeline run       --data data.yaml --preset yolo11n                 # all of the above
 ```
 
 ---
 
-## Stage 1 — Underwater augmentation
+## Components
 
-Stock augmentations (HSV jitter, brightness/contrast) treat underwater frames like ordinary
-photos. Underwater images follow an image-formation model instead:
-
-$$I_c = \underbrace{J_c\, e^{-\beta_c d}}_{\text{direct signal}} + \underbrace{B_c\,(1 - e^{-\beta_c d})}_{\text{backscatter}}$$
-
-where *J* is the scene, *d* the range, *β<sub>c</sub>* the per-channel attenuation (red is
-absorbed first) and *B<sub>c</sub>* the veiling light. [`auv_pipeline/augment/underwater.py`](auv_pipeline/augment/underwater.py)
-implements each term as an Albumentations transform:
-
-| Transform | What it simulates |
+| Part | What it does |
 |---|---|
-| `WaterAttenuation` | Wavelength-dependent absorption (Beer–Lambert) for clear / coastal / turbid water, with auto-exposure |
-| `Backscatter` | Patchy veiling light / turbidity: `I = J·t + B·(1 − t)` with a smooth transmission map |
-| `Caustics` | Rippling sunlight networks on pool floors and props in shallow water |
-| `LightFalloff` | Uneven artificial lighting: a bright cone from the vehicle's lights, dark corners |
-| `MarineSnow` | Suspended particles lit by the vehicle's lights |
+| `split_video.py` | Pulls evenly spaced frames out of a dive video and zips them into parts for annotators in CVAT |
+| `split_dataset.py`, `prepare_dataset.py` | Merge CVAT exports and create the train / val / test split and `data.yaml` |
+| `tune_yolo.py` | Optional hyperparameter search. Its best settings can be passed to training with `--hyp` |
+| `auv_pipeline/dataset.py` | Dataset check: missing labels, wrong class numbers, broken boxes, and how many examples each class has |
+| `auv_pipeline/augment/` | The underwater augmentations and the preview tool |
+| `auv_pipeline/train.py` | Training from a preset, test-set scoring, and a summary file for each run |
+| `auv_pipeline/prune.py` | Structured pruning and recovery training |
+| `auv_pipeline/export.py` | ONNX and TensorRT (FP16 / INT8) export |
+| `auv_pipeline/benchmark.py` | Accuracy / size / speed comparison between models |
+| `configs/train/` | Training presets: `yolo11n`, `yolo26n`, `yolo26m` |
+| `configs/augment/underwater.yaml` | Augmentation profiles: `physics`, `strong`, `blur`, `light`, `none` |
+| `infer_auv.py` | Runs a model with ByteTrack on a recorded dive video, optionally filling in glare-washed or too-dark patches first (inpainting), and can save the result |
+| `ros2/duburi_vision/vision_node.py` | The on-vehicle ROS 2 detection + tracking node |
+| `ros2/custom_interfaces/msg/CameraMsg.msg` | The message the vision node sends and receives |
+| `saved_runs/` | Training results (curves, confusion matrices, sample predictions) from past runs |
+| `tests/` | Automatic tests run on every push (no GPU needed) |
 
-They're combined with motion blur, low-light sensor noise and stream compression in the
-**`physics`** profile:
+### Underwater augmentation
 
-![physics augmentation profile](docs/assets/augment_physics.jpg)
+Normal photo augmentations only change brightness and colour a little. Underwater, images
+change in specific ways, so each one has its own augmentation:
 
-*Top rows: each transform on its own. Bottom rows: the full profile at its training
-probabilities, which is what the model actually sees.*
-
-Profiles live in [`configs/augment/underwater.yaml`](configs/augment/underwater.yaml):
-
-| Profile | Use |
+| Augmentation | What it imitates |
 |---|---|
-| `physics` | Physically-based underwater formation (above) |
-| `strong` | Heavy colour + lighting jitter (the original yolo26n recipe) |
-| `blur` | Heavy colour jitter + motion/particulate blur (yolo26m recipe) |
-| `light` | Mild jitter for clear, well-lit water (yolo11n recipe) |
-| `none` | Ultralytics defaults: the baseline for ablations |
+| Water attenuation | Water absorbs red light first, then green, so deeper or further objects look blue-green. Clear, coastal and murky water types are included |
+| Backscatter | Light bouncing off particles in the water makes a hazy, uneven veil over the scene |
+| Caustics | The rippling bright lines that sunlight makes on a pool floor |
+| Light falloff | The vehicle's own lights leave a bright centre and dark edges |
+| Marine snow | Small bright specks from floating particles near the camera |
+| Motion blur, sensor noise, compression | Vehicle movement, low-light noise and the compressed camera stream |
 
-The transforms go to Ultralytics through its native `augmentations=` argument, with no
-monkey-patching. They are pixel-level only (boxes untouched) and reproducible from a seed.
+The `physics` profile combines all of them. The top two rows below show each augmentation
+on its own, and the bottom rows show random combinations, which is what the model sees
+during training:
 
-## Stage 2 — Training
+![underwater augmentation preview](docs/assets/augment_physics.jpg)
 
-Presets in [`configs/train/`](configs/train/) inherit shared defaults from `_base.yaml`:
+The older recipes the team used are kept as the `strong`, `blur` and `light` profiles.
 
-| Preset | Model | Augment | Notes |
-|---|---|---|---|
-| `yolo26n` | YOLO26n | `strong` | Jetson target: 30+ FPS with TensorRT FP16 at 640 px |
-| `yolo26m` | YOLO26m | `blur` | Accuracy ceiling; starting point for prune-to-nano |
-| `yolo11n` | YOLO11n | `light` | Flips off |
+### Tracking
 
-```bash
-python -m auv_pipeline train --data data.yaml --preset yolo26n --dry-run   # validate first
-python -m auv_pipeline train --data data.yaml --preset yolo26n --augment physics --epochs 150
-python -m auv_pipeline train --data data.yaml --preset yolo11n --hyp runs/tune/.../best_hyperparameters.yaml
-python -m auv_pipeline train --resume runs/train/yolo26n_custom/weights/last.pt
-```
+Detection finds the objects in each frame. Tracking links them across frames so each object
+keeps the same ID. Both the video tool and the vehicle node use **ByteTrack** (through
+Ultralytics' `model.track`), then smooth each tracked box over time so the target position
+doesn't jitter from frame to frame.
 
-Any Ultralytics argument can be overridden with `--set key=value` (for example `--set mosaic=0.5 cos_lr=true`).
-Priority is `_base` < preset < augment profile < `--hyp` < CLI flags < `--set`.
+The **ROS 2 vision node** (`ros2/duburi_vision/vision_node.py`):
+- listens on `vision_topic` for what the mission wants (which camera and which model),
+- runs the detector + ByteTrack on that camera,
+- publishes one `CameraMsg` per tracked object on `camera_topic`: class, confidence, box, box
+  centre, and how far the box centre is from the frame centre (`x_diff`, `y_diff`), which the
+  controller uses to steer.
 
-Each run:
-1. **Checks the dataset** before using the GPU: missing labels, out-of-range class ids, malformed boxes, empty classes, per-class instance counts.
-2. Trains, then evaluates `best.pt` on the held-out **test** split.
-3. Exports ONNX / TensorRT (TensorRT is skipped automatically when no CUDA device is available).
-4. Writes `run_summary.json` with the config, git commit, val/test metrics and export paths.
-
-## Stage 3 — Structured pruning
-
-Removes whole channels (Torch-Pruning, BN-scale importance) so the network is genuinely
-smaller on TensorRT, then fine-tunes to recover accuracy:
-
-```bash
-# single shot: yolo26n, 30 % of channels
-python -m auv_pipeline prune --weights best.pt --data data.yaml --ratio 0.3 --finetune-epochs 25
-
-# iterative: yolo26m -> nano-sized, 2 rounds x 40 %
-python -m auv_pipeline prune --weights yolo26m_best.pt --data data.yaml --rounds 2 --ratio 0.4 --finetune-epochs 20
-```
-
-> **Pruning fix.** Ultralytics' `model.train()` rebuilds the network from its original YAML
-> and copies over only the shape-matching weights. With the old scripts, the "pruned" model
-> was silently rebuilt at full size for fine-tuning. The pipeline now fine-tunes the pruned
-> module itself through a custom trainer, and warns if the parameter count ever grows back.
-
-## Stage 4 — Export for the Jetson
-
-```bash
-python -m auv_pipeline export --weights best.pt --formats onnx engine          # FP16
-python -m auv_pipeline export --weights best.pt --formats engine --int8 --data data.yaml   # INT8, calibrated
-```
-
-TensorRT engines are tied to the TensorRT version that built them, so **build the `engine`
-on the Jetson** (or on a host with the same JetPack TensorRT).
-
-## Stage 5 — Benchmark
-
-```bash
-python -m auv_pipeline benchmark --models best.pt pruned.pt pruned.engine \
-    --labels base pruned trt --data data.yaml --save benchmark.md
-```
-
-Reports mAP50, mAP50-95, params, GMACs, file size, latency and FPS. The first model is the
-reference and the other columns show deltas, with accuracy drops flagged.
+Settings can be changed at launch, for example
+`ros2 run simulator vision_node --ros-args -p gate_weights:=/path/to/gate.engine -p conf:=0.7`.
 
 ---
 
-## Results
+## Models
 
-Torpedo detector from the RoboSub runs: YOLO11n at 640 px, trained with the previous
-training script (the dataset isn't in this repo). Full artefacts are in
-[`saved_runs/Torpedo/`](saved_runs/Torpedo/).
+All the models used at the competition are **YOLO11n**: the smallest YOLO11, with 2.59 million
+parameters, trained at 640 × 640 pixels. "Nano" models were chosen because the Jetson Orin
+Nano also has to run tracking, control and the rest of the software at the same time, and a
+nano model leaves room for that while running in real time with TensorRT.
 
-| Metric | Value |
-|---|---|
-| Precision | 0.997 |
-| Recall | 1.000 |
-| mAP50 | 0.995 |
-| mAP50-95 | 0.846 |
-| Best epoch / epochs run | 116 / 136 (early stopped) |
-| Train time | 6.1 min |
+New task models were usually trained from the previous model for the same task rather than
+from scratch. For example, the RoboSub day 1 gate model started from the June gate model.
 
-Regenerate this table with `python -m auv_pipeline report saved_runs/Torpedo --markdown`.
+The pipeline also has presets for **YOLO26n** (the newer nano model) and **YOLO26m** (a medium
+model that can be pruned down to nano size).
+
+---
+
+## Results by task
+
+Each score below is measured on that model's own validation set: images from the same
+dives, held out from training.
+
+- **Precision** is how many detections were correct.
+- **Recall** is how many real objects were found.
+- **mAP50** is detection accuracy when a box only needs a rough overlap with the real object.
+- **mAP50-95** is detection accuracy averaged over looser to very tight box fits. This is the strictest score.
+
+| Task | Classes | Model | Trained | Precision | Recall | mAP50 | mAP50-95 |
+|---|---|---|---|---|---|---|---|
+| **Gate** | gate, rescue, repair | YOLO11n | 21 Jun | 0.987 | 0.996 | 0.995 | 0.853 |
+| **Gate** (RoboSub testing day 1) | rescue, repair | YOLO11n | 11 Jul | 0.990 | 1.000 | 0.995 | 0.968 |
+| **Torpedo** | torpedo, blood, hole | YOLO11n | 10 Jun | 0.997 | 1.000 | 0.995 | 0.846 |
+| **Torpedo** (RoboSub testing day 1) | torpedo, blood, hole | YOLO11n | 11 Jul | 0.977 | 1.000 | 0.994 | 0.940 |
+| **Torpedo** (RoboSub day 1) | torpedo, blood, hole | YOLO11n | 13 Jul | 0.983 | 1.000 | 0.995 | 0.924 |
+| **Octagon objects** | red, blue, black | YOLO11n | 4 Jul | 0.976 | 0.983 | 0.992 | 0.850 |
+| **Octagon objects** (newest) | red, blue, black | YOLO11n | 5 Jul | 0.985 | 1.000 | 0.995 | 0.864 |
+
+All models find almost every object (recall 0.98–1.00) and almost all of their detections
+are correct. The strict mAP50-95 score is highest for the RoboSub-day models (0.92–0.97),
+which were fine-tuned on footage from the competition pool itself. The validation sets are
+small and come from the same videos as the training data, so expect somewhat lower scores in
+new water or lighting.
+
+Any score can be reproduced from the run folder or the weights file:
+`python -m auv_pipeline report saved_runs/Gate` or `python -m auv_pipeline report best.pt`.
+
+### Gate: training curves and predictions
 
 | Training curves | Confusion matrix |
 |---|---|
-| ![results](saved_runs/Torpedo/results.png) | ![confusion matrix](saved_runs/Torpedo/confusion_matrix_normalized.png) |
+| ![gate results](saved_runs/Gate/results.png) | ![gate confusion matrix](saved_runs/Gate/confusion_matrix_normalized.png) |
 
-![validation predictions](saved_runs/Torpedo/val_batch0_pred.jpg)
+![gate validation predictions](saved_runs/Gate/val_batch0_pred.jpg)
+
+### Torpedo: training curves and predictions
+
+| Training curves | Confusion matrix |
+|---|---|
+| ![torpedo results](saved_runs/Torpedo/results.png) | ![torpedo confusion matrix](saved_runs/Torpedo/confusion_matrix_normalized.png) |
+
+![torpedo validation predictions](saved_runs/Torpedo/val_batch0_pred.jpg)
+
+The trained weights are not stored in this repository.
 
 ---
 
-## Setup
+## Using it
+
+### Setup
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121   # match your CUDA
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121   # pick your CUDA version
 pip install -r requirements.txt
-pytest                                                                              # sanity check
 ```
 
-### Data preparation
+### Train a new task model
 
-1. CVAT → **Export dataset** → format **YOLO 1.1**, then unzip.
-2. Split and generate `data.yaml`:
-   ```bash
-   python split_dataset.py --input /path/to/cvat_export --output /path/to/dataset   # 85 / 5 / 10
-   python -m auv_pipeline check --data /path/to/dataset/data.yaml
-   ```
-   `split_video.py` pulls frames from a video for annotation, and `prepare_dataset.py` merges several CVAT exports.
-
-### Jetson Orin Nano deployment
-
-1. Flash **JetPack 6.x** with NVIDIA SDK Manager.
-2. Install NVIDIA's Jetson PyTorch wheel (not PyPI's), then `pip3 install torchvision ultralytics`.
-3. Copy the pruned `best.pt` over and build the engine on the device:
-   ```bash
-   python3 -m auv_pipeline export --weights best.pt --formats engine          # or --int8 --data data.yaml
-   ```
-4. Run it:
-   ```python
-   from ultralytics import YOLO
-   model = YOLO("best.engine")
-   for frame in camera_stream():
-       results = model(frame, imgsz=640, conf=0.4, iou=0.5)
-   ```
-   If 640 px is too slow even after pruning, use `imgsz=416` or `320`. INT8 gives roughly another 2× over FP16.
-
-## Repository layout
-
-```
-auv_pipeline/            the staged pipeline (python -m auv_pipeline <stage>)
-  augment/underwater.py    physics-based underwater transforms
-  augment/preview.py       augmentation preview grids
-  dataset.py               data.yaml / label sanity checks
-  train.py  prune.py  export.py  benchmark.py  results.py  cli.py
-configs/
-  augment/underwater.yaml  augmentation profiles
-  train/*.yaml             training presets
-saved_runs/              results from previous runs
-tests/                   unit tests (no GPU needed), run in CI
-split_dataset.py  prepare_dataset.py  split_video.py  tune_yolo.py      data + tuning tools
-infer_auv.py  navigate*.py  visual_navigation                           on-vehicle inference / navigation
-dashboard.py  pipeline.py  n8n_workflow.json                            dashboard + annotation automation
+```bash
+python split_dataset.py --input /path/to/cvat_export --output /path/to/dataset
+python -m auv_pipeline check --data /path/to/dataset/data.yaml
+python -m auv_pipeline train --data /path/to/dataset/data.yaml --preset yolo11n --augment physics --device 0
 ```
 
-## Troubleshooting
+Results go to `runs/train/<name>/`. Add `--dry-run` to only check the dataset and print the
+settings. Add `--set key=value` to change any other Ultralytics training setting.
 
-| Symptom | Fix |
-|---|---|
-| `check` reports malformed label lines | A class id is outside `names`, or there are fewer than 4 coordinates / coordinates outside [0, 1]. Fix the export or `names:` |
-| TensorRT export skipped | There's no CUDA device on this machine. Build the engine on the Jetson (Stage 4) |
-| mAP drops more than 4 points after pruning | Raise `--finetune-epochs`, lower `--ratio`, or prune iteratively with `--rounds` |
-| OOM during training | Halve `--batch`, or try `--imgsz 416` |
+### Make it smaller and faster
+
+```bash
+python -m auv_pipeline prune --weights runs/train/yolo11n_custom/weights/best.pt \
+    --data /path/to/dataset/data.yaml --ratio 0.3 --finetune-epochs 25
+python -m auv_pipeline benchmark --models best.pt runs/prune/pruned_r1/weights/best.pt \
+    --labels original pruned --data /path/to/dataset/data.yaml
+```
+
+The new pruning code fixes a problem in the old scripts. When fine-tuning started, Ultralytics
+quietly rebuilt the full-size model, so the "pruned" model was not actually smaller. The
+pruned model is now kept through fine-tuning, and the tool warns if it ever grows back.
+
+### Deploy on the Jetson
+
+TensorRT engines only work with the TensorRT version that built them, so build the engine on
+the Jetson itself:
+
+```bash
+python3 -m auv_pipeline export --weights best.pt --formats engine                  # FP16
+python3 -m auv_pipeline export --weights best.pt --formats engine --int8 --data data.yaml   # INT8
+```
+
+Then point the vision node at the engine: `-p gate_weights:=/path/to/best.engine`.
+
+### Try a model on a recorded dive
+
+```bash
+python infer_auv.py --source dive.mp4 --weights best.pt                      # detect + track
+python infer_auv.py --source dive.mp4 --weights best.pt --mode compare --save out.mp4   # side by side: with / without inpainting
+```

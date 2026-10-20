@@ -1,0 +1,16 @@
+string camera
+string[] class_name
+int32 frame_cx
+int32 frame_cy
+int32 x1
+int32 y1
+int32 x2
+int32 y2
+int32 cx
+int32 cy
+int32 width
+int32 height
+int32 x_diff
+int32 y_diff
+float64 conf
+string model

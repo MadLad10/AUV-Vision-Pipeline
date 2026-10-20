@@ -29,6 +29,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--val",   type=float, default=0.05)
     p.add_argument("--test",  type=float, default=0.10)
     p.add_argument("--seed",  type=int,   default=42, help="Random seed for reproducibility")
+    p.add_argument("--no-split", action="store_true",
+                   help="Merge only — dump everything into train/, skip val/test split")
     p.add_argument(
         "--classes", nargs="+",
         help="Class names. Auto-detected from obj.names/classes.txt if omitted.",
@@ -58,16 +60,19 @@ def detect_class_names(input_dir: Path) -> list[str]:
     return []
 
 
-def collect_pairs(input_dir: Path) -> list[tuple[Path, Path]]:
+def collect_pairs(input_dir: Path, prefix: str = "") -> list[tuple[Path, Path, str, str]]:
     """
-    Return (image_path, label_path) pairs where both files exist.
+    Return (image_path, label_path, out_img_name, out_lbl_name) tuples.
+
+    `prefix` is prepended to filenames to avoid stem collisions when merging
+    multiple input directories (e.g. "june30_frame_000450.png").
 
     Strategy:
       1. Sibling .txt  — same directory as the image.
       2. Sibling labels/ dir — replace 'images' segment with 'labels' in the path.
       3. Global rglob  — last resort scan for a .txt with the same stem.
     """
-    pairs: list[tuple[Path, Path]] = []
+    pairs: list[tuple[Path, Path, str, str]] = []
     seen_stems: set[str] = set()
 
     for img_path in sorted(input_dir.rglob("*")):
@@ -76,7 +81,7 @@ def collect_pairs(input_dir: Path) -> list[tuple[Path, Path]]:
 
         stem = img_path.stem
         if stem in seen_stems:
-            print(f"  [WARN] Duplicate stem '{stem}', skipping {img_path}")
+            print(f"  [WARN] Duplicate stem '{stem}' within '{input_dir}', skipping {img_path}")
             continue
 
         # Strategy 1: sibling .txt
@@ -102,20 +107,23 @@ def collect_pairs(input_dir: Path) -> list[tuple[Path, Path]]:
             print(f"  [WARN] No label for '{img_path.name}' — skipping")
             continue
 
-        pairs.append((img_path, label_path))
+        out_stem    = f"{prefix}{stem}" if prefix else stem
+        out_img_name = out_stem + img_path.suffix
+        out_lbl_name = out_stem + ".txt"
+        pairs.append((img_path, label_path, out_img_name, out_lbl_name))
         seen_stems.add(stem)
 
     return pairs
 
 
-def copy_pairs(pairs: list[tuple[Path, Path]], split: str, out_root: Path) -> None:
+def copy_pairs(pairs: list[tuple[Path, Path, str, str]], split: str, out_root: Path) -> None:
     img_dir = out_root / "images" / split
     lbl_dir = out_root / "labels" / split
     img_dir.mkdir(parents=True, exist_ok=True)
     lbl_dir.mkdir(parents=True, exist_ok=True)
-    for img, lbl in pairs:
-        shutil.copy2(img, img_dir / img.name)
-        shutil.copy2(lbl, lbl_dir / lbl.name)
+    for img, lbl, out_img_name, out_lbl_name in pairs:
+        shutil.copy2(img, img_dir / out_img_name)
+        shutil.copy2(lbl, lbl_dir / out_lbl_name)
 
 
 def write_yaml(out_root: Path, class_names: list[str]) -> Path:
@@ -152,10 +160,12 @@ def main() -> None:
             raise FileNotFoundError(f"Input directory not found: {d}")
 
     # 1. Collect pairs from all input directories
+    use_prefix = len(input_dirs) > 1
     pairs = []
     for input_dir in input_dirs:
+        prefix = input_dir.name.replace(" ", "_") + "_" if use_prefix else ""
         print(f"[1/4] Scanning '{input_dir}' for image-label pairs ...")
-        p = collect_pairs(input_dir)
+        p = collect_pairs(input_dir, prefix=prefix)
         print(f"      Found {len(p)} pairs.")
         pairs.extend(p)
     if not pairs:
@@ -167,17 +177,21 @@ def main() -> None:
     random.seed(args.seed)
     random.shuffle(pairs)
 
-    n       = len(pairs)
-    n_train = round(n * args.train)
-    n_val   = round(n * args.val)
-    n_test  = n - n_train - n_val  # remainder absorbs rounding drift
+    if args.no_split:
+        splits = {"train": pairs}
+        print("      --no-split: all pairs go to train/")
+    else:
+        n       = len(pairs)
+        n_train = round(n * args.train)
+        n_val   = round(n * args.val)
+        n_test  = n - n_train - n_val
 
-    splits = {
-        "train": pairs[:n_train],
-        "val":   pairs[n_train : n_train + n_val],
-        "test":  pairs[n_train + n_val :],
-    }
-    print(f"      train={len(splits['train'])}  val={len(splits['val'])}  test={len(splits['test'])}")
+        splits = {
+            "train": pairs[:n_train],
+            "val":   pairs[n_train : n_train + n_val],
+            "test":  pairs[n_train + n_val :],
+        }
+        print(f"      train={len(splits['train'])}  val={len(splits['val'])}  test={len(splits['test'])}")
 
     # 3. Copy files
     print(f"[3/4] Writing to '{output_dir}' ...")

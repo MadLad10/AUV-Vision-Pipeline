@@ -36,9 +36,30 @@ def read_results_csv(run_dir: Path) -> dict | None:
     return out
 
 
+def checkpoint_report(weights: Path) -> dict:
+    """Final validation metrics Ultralytics stores inside a trained .pt checkpoint."""
+    import torch
+
+    ckpt = torch.load(weights, map_location="cpu", weights_only=False)
+    stored = ckpt.get("train_metrics") or {}
+    metrics = {k: float(stored[col]) for k, col in METRIC_COLUMNS.items() if col in stored}
+    args = ckpt.get("train_args") or {}
+    model = ckpt.get("ema") or ckpt.get("model")
+    names = getattr(model, "names", {}) or {}
+    return {
+        "run": weights.stem,
+        "metrics": metrics,
+        "args": {k: args.get(k) for k in ("model", "epochs", "imgsz", "batch", "optimizer", "patience")},
+        "classes": list(names.values()) if isinstance(names, dict) else list(names),
+        "date": (ckpt.get("date") or "")[:10],
+    }
+
+
 def run_report(run_dir: Path) -> dict:
-    """Metrics + key training args for a finished run directory (e.g. saved_runs/Torpedo)."""
+    """Metrics + key training args for a run directory (e.g. saved_runs/Torpedo) or a .pt checkpoint."""
     run_dir = Path(run_dir)
+    if run_dir.suffix == ".pt":
+        return checkpoint_report(run_dir)
     report: dict = {"run": run_dir.name, "metrics": read_results_csv(run_dir) or {}}
     args_file = run_dir / "args.yaml"
     if args_file.exists():
@@ -50,7 +71,9 @@ def run_report(run_dir: Path) -> dict:
 def print_run_report(report: dict, markdown: bool = False) -> None:
     m, a = report.get("metrics", {}), report.get("args", {})
     rows = [
-        ("Model", a.get("model", "?")),
+        ("Started from", Path(str(a.get("model", "?"))).name),
+        *((("Classes", ", ".join(report["classes"])),) if report.get("classes") else ()),
+        *((("Trained", report["date"]),) if report.get("date") else ()),
         ("Image size", a.get("imgsz", "?")),
         ("Epochs run / max", f"{m.get('epochs_run', '?')} / {a.get('epochs', '?')}"),
         ("Best epoch", m.get("best_epoch", "?")),

@@ -16,7 +16,7 @@ snapshot_*.png
 *.onnx
 *.engine
 *.pt
-!yolo26n.pt
+
 octagon_*/
 june2_yaad anas/
 June2 Yaad Anas/
@@ -24,3 +24,20 @@ My preferred weights/
 /aug_preview.jpg
 /full_preview.jpg
 /hsv_preview.jpg
+
+# Local-only tools (not part of the published pipeline)
+cmd.txt
+check_inpaint.py
+dashboard.py
+.streamlit/
+requirements_dashboard.txt
+flicker fix.md
+infer_auv_new.py
+n8n_workflow.json
+pipeline.py
+pipeline_config.yaml
+navigate.py
+navigate_orb.py
+navigate_pnp.py
+visual_navigation
+bracu-duburi-dashboard/

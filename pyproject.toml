@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-include = ["auv_pipeline/**/*.py", "tests/**/*.py"]
+include = ["auv_pipeline/**/*.py", "tests/**/*.py", "ros2/**/*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
