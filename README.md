@@ -64,7 +64,6 @@ python -m auv_pipeline run       --data data.yaml --preset yolo11n              
 | `infer_auv.py` | Runs a model with ByteTrack on a recorded dive video, optionally filling in glare-washed or too-dark patches first (inpainting), and can save the result |
 | `ros2/duburi_vision/vision_node.py` | The on-vehicle ROS 2 detection + tracking node |
 | `ros2/custom_interfaces/msg/CameraMsg.msg` | The message the vision node sends and receives |
-| `saved_runs/` | Training results (curves, confusion matrices, sample predictions) from past runs |
 | `tests/` | Automatic tests run on every push (no GPU needed) |
 
 ### Underwater augmentation
@@ -123,50 +122,29 @@ model that can be pruned down to nano size).
 
 ---
 
-## Results by task
+## Results: RoboSub Competition Testing, California
 
-Each score below is measured on that model's own validation set: images from the same
-dives, held out from training.
+These models were fine-tuned on footage recorded in the competition pool during the RoboSub
+testing days in California. Each score is measured on that model's own validation set:
+images from the same dives, held out from training.
 
 - **Precision** is how many detections were correct.
 - **Recall** is how many real objects were found.
 - **mAP50** is detection accuracy when a box only needs a rough overlap with the real object.
 - **mAP50-95** is detection accuracy averaged over looser to very tight box fits. This is the strictest score.
 
-| Task | Classes | Model | Trained | Precision | Recall | mAP50 | mAP50-95 |
+| Task | Classes | Model | Date | Precision | Recall | mAP50 | mAP50-95 |
 |---|---|---|---|---|---|---|---|
-| **Gate** | gate, rescue, repair | YOLO11n | 21 Jun | 0.987 | 0.996 | 0.995 | 0.853 |
-| **Gate** (RoboSub testing day 1) | rescue, repair | YOLO11n | 11 Jul | 0.990 | 1.000 | 0.995 | 0.968 |
-| **Torpedo** | torpedo, blood, hole | YOLO11n | 10 Jun | 0.997 | 1.000 | 0.995 | 0.846 |
-| **Torpedo** (RoboSub testing day 1) | torpedo, blood, hole | YOLO11n | 11 Jul | 0.977 | 1.000 | 0.994 | 0.940 |
-| **Torpedo** (RoboSub day 1) | torpedo, blood, hole | YOLO11n | 13 Jul | 0.983 | 1.000 | 0.995 | 0.924 |
-| **Octagon objects** | red, blue, black | YOLO11n | 4 Jul | 0.976 | 0.983 | 0.992 | 0.850 |
-| **Octagon objects** (newest) | red, blue, black | YOLO11n | 5 Jul | 0.985 | 1.000 | 0.995 | 0.864 |
+| **Gate** | rescue, repair | YOLO11n | 11 Jul | 0.990 | 1.000 | 0.995 | 0.968 |
+| **Torpedo** | torpedo, blood, hole | YOLO11n | 11 Jul | 0.977 | 1.000 | 0.994 | 0.940 |
+| **Torpedo** (updated) | torpedo, blood, hole | YOLO11n | 13 Jul | 0.983 | 1.000 | 0.995 | 0.924 |
 
-All models find almost every object (recall 0.98–1.00) and almost all of their detections
-are correct. The strict mAP50-95 score is highest for the RoboSub-day models (0.92–0.97),
-which were fine-tuned on footage from the competition pool itself. The validation sets are
-small and come from the same videos as the training data, so expect somewhat lower scores in
-new water or lighting.
+All three models found every object in their validation sets (recall 1.000), and at least 97.7%
+of their detections were correct. They also scored 0.92–0.97 on the strict mAP50-95 measure.
+The validation sets are small and come from the same pool sessions as the training data, so
+expect somewhat lower scores in new water or lighting.
 
-Any score can be reproduced from the run folder or the weights file:
-`python -m auv_pipeline report saved_runs/Gate` or `python -m auv_pipeline report best.pt`.
-
-### Gate: training curves and predictions
-
-| Training curves | Confusion matrix |
-|---|---|
-| ![gate results](saved_runs/Gate/results.png) | ![gate confusion matrix](saved_runs/Gate/confusion_matrix_normalized.png) |
-
-![gate validation predictions](saved_runs/Gate/val_batch0_pred.jpg)
-
-### Torpedo: training curves and predictions
-
-| Training curves | Confusion matrix |
-|---|---|
-| ![torpedo results](saved_runs/Torpedo/results.png) | ![torpedo confusion matrix](saved_runs/Torpedo/confusion_matrix_normalized.png) |
-
-![torpedo validation predictions](saved_runs/Torpedo/val_batch0_pred.jpg)
+Any score can be read back from the weights file with `python -m auv_pipeline report best.pt`.
 
 The trained weights are not stored in this repository.
 
