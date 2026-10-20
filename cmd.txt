@@ -33,57 +33,66 @@ python tune_yolo.py \
     --epochs 30 --iterations 50 \
     --device 0 --batch 16 --imgsz 640
 
-# ─── train_yolo26.py — train YOLO26n (nano, Jetson-ready) ────────────────────
-python train_yolo26.py \
-    --data /home/yaad/Dataset_final_run/split_out/data.yaml \
-    --model yolo26n.pt \
-    --epochs 100 --patience 20 --imgsz 640 \
-    --batch 16 --device 0 \
-    --name yolo26n_custom
+# ═══ auv_pipeline — underwater aug → train → prune → TensorRT → benchmark ═══
+# List presets (configs/train/) and augment profiles (configs/augment/):
+python -m auv_pipeline presets
 
-# ─── train_yolo26m.py — train YOLO26m (medium) ───────────────────────────────
-python train_yolo26m.py \
-    --data /home/yaad/Dataset_final_run/split_out/data.yaml \
-    --model yolo26m.pt \
-    --epochs 100 --patience 20 --imgsz 640 \
-    --batch 8 --device 0 \
-    --name yolo26m_custom
+# ─── check — dataset sanity check (labels, class ids, class balance) ─────────
+python -m auv_pipeline check --data /home/yaad/Dataset_final_run/split_out/data.yaml
 
-# ─── train_yolo11.py — train YOLO11n ─────────────────────────────────────────
-python train_yolo11.py \
+# ─── augment — stage 1: preview an underwater augmentation profile ───────────
+python -m auv_pipeline augment --profile physics \
+    --images /home/yaad/Dataset_final_run/split_out/images/train \
+    --out runs/augment/physics.jpg
+
+# ─── train — stage 2: train a preset (yolo26n | yolo26m | yolo11n) ────────────
+python -m auv_pipeline train --data /home/yaad/Dataset_final_run/split_out/data.yaml --preset yolo26n --dry-run   # check config first
+python -m auv_pipeline train \
     --data /home/yaad/Dataset_final_run/split_out/data.yaml \
-    --model yolo11n.pt \
-    --epochs 100 --patience 20 --imgsz 640 \
-    --batch 16 --device 0 \
-    --name yolo11n_custom
+    --preset yolo26n --augment physics \
+    --epochs 100 --batch 16 --device 0
+
+python -m auv_pipeline train --data /home/yaad/Dataset_final_run/split_out/data.yaml --preset yolo26m --device 0
+python -m auv_pipeline train --data /home/yaad/Dataset_final_run/split_out/data.yaml --preset yolo11n --freeze 4 --device 0
 
 # with hyperparameters from tune_yolo.py:
-python train_yolo11.py \
+python -m auv_pipeline train \
     --data /home/yaad/Dataset_final_run/split_out/data.yaml \
-    --cfg runs/tune/tune_result/best_hyperparameters.yaml \
-    --model yolo11n.pt \
-    --epochs 100 --device 0
+    --preset yolo11n --epochs 200 --device 0 \
+    --hyp runs/tune/tune_result/best_hyperparameters.yaml
 
-# ─── prune_yolo26.py — structured pruning of a trained YOLO26n ───────────────
-python prune_yolo26.py \
-    --weights runs/detect/runs/train/yolo26n_custom/weights/best.pt \
+# resume an interrupted run:
+python -m auv_pipeline train --resume runs/train/yolo26n_custom/weights/last.pt
+
+# ─── prune — stage 3: structured pruning + recovery fine-tune ────────────────
+python -m auv_pipeline prune \
+    --weights runs/train/yolo26n_custom/weights/best.pt \
     --data /home/yaad/Dataset_final_run/split_out/data.yaml \
-    --pruning-ratio 0.30 --finetune-epochs 25 \
+    --ratio 0.30 --finetune-epochs 25 --augment strong \
     --device 0 --name yolo26n_pruned
 
-# ─── prune_to_nano.py — iteratively shrink YOLO26m → nano-equivalent ─────────
-python prune_to_nano.py \
-    --weights runs/detect/runs/train/yolo26m_custom/weights/best.pt \
+# iteratively shrink YOLO26m → nano-equivalent:
+python -m auv_pipeline prune \
+    --weights runs/train/yolo26m_custom/weights/best.pt \
     --data /home/yaad/Dataset_final_run/split_out/data.yaml \
-    --rounds 2 --ratio-per-round 0.40 --finetune-epochs 20 \
-    --device 0 --name yolo26m_to_nano
+    --rounds 2 --ratio 0.40 --finetune-epochs 20 \
+    --device 0 --name yolo26m_to_nano --formats onnx
 
-# ─── benchmark.py — compare base vs pruned model ─────────────────────────────
-python benchmark.py \
-    --base    runs/detect/runs/train/yolo26n_custom/weights/best.pt \
-    --pruned  runs/detect/runs/prune/yolo26n_pruned/weights/best.pt \
-    --data    /home/yaad/Dataset_final_run/split_out/data.yaml \
-    --device 0
+# ─── export — stage 4: ONNX / TensorRT (run engine export on the Jetson) ─────
+python -m auv_pipeline export --weights runs/prune/yolo26n_pruned_r1/weights/best.pt --formats onnx engine
+python -m auv_pipeline export --weights best.pt --formats engine --int8 --data /home/yaad/Dataset_final_run/split_out/data.yaml
+
+# ─── benchmark — stage 5: compare models ──────────────────────────────────────
+python -m auv_pipeline benchmark \
+    --models runs/train/yolo26n_custom/weights/best.pt runs/prune/yolo26n_pruned_r1/weights/best.pt \
+    --labels base pruned \
+    --data /home/yaad/Dataset_final_run/split_out/data.yaml --device 0 --save runs/benchmark.md
+
+# ─── run — every stage end to end ─────────────────────────────────────────────
+python -m auv_pipeline run --data /home/yaad/Dataset_final_run/split_out/data.yaml --preset yolo26n --augment physics --device 0
+
+# ─── report — summarise a finished run ────────────────────────────────────────
+python -m auv_pipeline report saved_runs/Torpedo --markdown
 
 # ─── infer_auv_new.py — quick hardcoded inference (edit WEIGHTS/SOURCE inside) ──
 # Edit the top of infer_auv_new.py to set WEIGHTS and SOURCE, then:

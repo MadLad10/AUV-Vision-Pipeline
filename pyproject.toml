@@ -1,0 +1,18 @@
+[project]
+name = "auv-pipeline"
+version = "2.0.0"
+description = "BRACU Duburi AUV vision pipeline: underwater augmentation, YOLO training, pruning, TensorRT export"
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+include = ["auv_pipeline/**/*.py", "tests/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E741", "B905"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

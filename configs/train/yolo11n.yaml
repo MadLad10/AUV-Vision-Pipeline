@@ -1,0 +1,9 @@
+extends: _base.yaml
+description: YOLO11n — mild augmentation for clear, well-lit water; flips off
+model: yolo11n.pt
+name: yolo11n_custom
+augment: light
+
+train:
+  fliplr: 0.0
+  flipud: 0.0

@@ -1,0 +1,11 @@
+extends: _base.yaml
+description: YOLO26m (~8x yolo26n) — accuracy ceiling / starting point for iterative pruning to nano size
+model: yolo26m.pt
+name: yolo26m_custom
+augment: blur
+
+train:
+  batch: 8               # smaller than nano because of model size
+
+export:
+  formats: [onnx]        # prune before deploying; see `auv_pipeline prune --rounds 2`

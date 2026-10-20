@@ -85,7 +85,7 @@ def main() -> None:
     print(f"\nTuning complete.")
     print(f"Best hyperparameters saved to: {best_yaml}")
     print(f"\nTrain with best params:")
-    print(f"  python train_yolo11.py --data {args.data} --epochs 200 --cfg {best_yaml}")
+    print(f"  python -m auv_pipeline train --preset yolo11n --data {args.data} --epochs 200 --hyp {best_yaml}")
 
 
 if __name__ == "__main__":

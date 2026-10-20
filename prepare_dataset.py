@@ -225,7 +225,7 @@ def main() -> None:
     print(f"  Classes  : {class_names}")
     print(f"  data.yaml: {yaml_path}")
     print(f"\n  Train with:")
-    print(f"    python train_yolo26.py --data {yaml_path}")
+    print(f"    python -m auv_pipeline train --data {yaml_path} --preset yolo26n")
     print(f"{'─'*55}\n")
 
 

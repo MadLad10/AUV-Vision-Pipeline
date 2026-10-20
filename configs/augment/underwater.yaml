@@ -1,0 +1,49 @@
+# Underwater augmentation profiles — stage 1 of the pipeline.
+#
+# A profile is:
+#   hsv:        Ultralytics HSV gains (hsv_h / hsv_s / hsv_v)
+#   transforms: Albumentations list that replaces Ultralytics' default (near no-op) set.
+#               Names resolve to the physics transforms in auv_pipeline/augment/underwater.py
+#               first, then to any albumentations class. Lists become tuples.
+#
+# Preview any profile:  python -m auv_pipeline augment --profile physics --images <dir>
+
+profiles:
+  physics:
+    description: Physically-based underwater image formation — attenuation, backscatter, caustics, particles
+    hsv: {h: 0.015, s: 0.5, v: 0.4}
+    transforms:
+      - WaterAttenuation: {depth: [0.5, 5.0], water: [clear, coastal, turbid], p: 0.6}
+      - Backscatter: {strength: [0.15, 0.55], p: 0.5}
+      - Caustics: {strength: [0.05, 0.25], cells: [6, 16], p: 0.25}
+      - LightFalloff: {strength: [0.2, 0.6], p: 0.3}
+      - MarineSnow: {density: [0.0002, 0.0015], p: 0.3}
+      - MotionBlur: {blur_limit: [3, 9], p: 0.25}            # AUV motion
+      - GaussNoise: {std_range: [0.02, 0.06], p: 0.2}         # low-light sensor noise
+      - ImageCompression: {quality_range: [40, 90], p: 0.2}   # compressed camera stream
+
+  strong:
+    description: Heavy colour + lighting jitter (yolo26n recipe)
+    hsv: {h: 0.02, s: 0.90, v: 0.60}
+    transforms:
+      - RandomBrightnessContrast: {brightness_limit: 0.4, contrast_limit: 0.4, p: 0.6}
+      - RandomGamma: {gamma_limit: [60, 140], p: 0.4}
+
+  blur:
+    description: Heavy colour jitter + motion / particulate blur (yolo26m recipe)
+    hsv: {h: 0.02, s: 0.90, v: 0.60}
+    transforms:
+      - Blur: {blur_limit: [3, 7], p: 0.3}
+      - MotionBlur: {blur_limit: [3, 7], p: 0.3}
+      - GaussianBlur: {blur_limit: [3, 7], p: 0.2}
+      - RandomBrightnessContrast: {brightness_limit: 0.3, contrast_limit: 0.3, p: 0.5}
+
+  light:
+    description: Mild colour jitter for clear, well-lit water (yolo11n recipe)
+    hsv: {h: 0.01, s: 0.07, v: 0.20}
+    transforms:
+      - RandomBrightnessContrast: {brightness_limit: 0.10, contrast_limit: 0.10, p: 0.6}
+      - RandomGamma: {gamma_limit: [95, 105], p: 0.4}
+
+  none:
+    description: Ultralytics defaults only (baseline for ablations)

@@ -6,3 +6,21 @@ runs/
 inpaint_check/
 output.mp4
 snapshot_*.png
+.pytest_cache/
+.ruff_cache/
+
+# Large local artefacts: datasets, videos, archives and trained weights stay out of git
+*.mp4
+*.webm
+*.zip
+*.onnx
+*.engine
+*.pt
+!yolo26n.pt
+octagon_*/
+june2_yaad anas/
+June2 Yaad Anas/
+My preferred weights/
+/aug_preview.jpg
+/full_preview.jpg
+/hsv_preview.jpg

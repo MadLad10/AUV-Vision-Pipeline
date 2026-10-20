@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      # Lightweight deps only: config, dataset checks, augmentations and the CLI are
+      # tested without torch / ultralytics (those tests skip themselves).
+      - name: Install
+        run: pip install pyyaml numpy opencv-python-headless "albumentations>=2.0" rich pytest ruff
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: pytest
+      - name: Augmentation preview renders
+        run: |
+          python -m auv_pipeline augment --profile physics \
+            --images saved_runs/Torpedo/val_batch0_labels.jpg --samples 5 --out preview.jpg
+      - uses: actions/upload-artifact@v4
+        if: matrix.python-version == '3.12'
+        with:
+          name: augment-preview
+          path: preview.jpg

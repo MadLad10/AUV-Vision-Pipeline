@@ -1,0 +1,5 @@
+extends: _base.yaml
+description: YOLO26n for the Jetson Orin Nano (real-time, 30+ FPS TensorRT FP16)
+model: yolo26n.pt
+name: yolo26n_custom
+augment: strong          # configs/augment/underwater.yaml — try `--augment physics`

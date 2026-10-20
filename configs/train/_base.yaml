@@ -1,0 +1,22 @@
+# Shared defaults inherited by every preset (`extends: _base.yaml`).
+# Anything under `train:` is passed straight to Ultralytics `model.train()`,
+# so any Ultralytics train argument is valid here.
+
+train:
+  epochs: 100
+  patience: 20          # early stopping
+  imgsz: 640
+  batch: 16
+  workers: 8
+  optimizer: AdamW
+  lr0: 0.001
+  lrf: 0.01
+  warmup_epochs: 3
+  close_mosaic: 10      # disable mosaic for the last N epochs
+  amp: true             # mixed precision
+  pretrained: true
+  plots: true
+
+export:
+  formats: [onnx, engine]   # engine = TensorRT; skipped automatically without CUDA
+  half: true                # FP16 — recommended for Jetson TensorRT

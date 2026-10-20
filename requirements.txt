@@ -1,8 +1,11 @@
-# Core training framework
-ultralytics>=8.3.0
+# Core training framework (>=8.4: native custom Albumentations via train(augmentations=...))
+ultralytics>=8.4.0
 
 # Underwater augmentations (training)
-albumentations>=1.4.0
+albumentations>=2.0.0
+
+# Pipeline CLI output
+rich>=13.0
 
 # Inference / video display
 opencv-python>=4.10.0
@@ -18,10 +21,14 @@ torch-pruning>=1.4.0
 # Export / inference
 onnx>=1.16.0
 onnxruntime>=1.18.0        # CPU fallback for ONNX validation on training machine
+onnxslim>=0.1.30           # ONNX graph simplification during export
 
 # Data / config
 pyyaml>=6.0
 numpy>=1.26.0
+
+# Tests
+pytest>=7.0
 
 # Benchmarking
 scipy>=1.13.0              # used by some ultralytics metrics internally
