@@ -1,6 +1,6 @@
 # BRACU Duburi — AUV Vision Pipeline
 
-[![CI](https://github.com/MadLad10/Testing-yolo26/actions/workflows/ci.yml/badge.svg)](https://github.com/MadLad10/Testing-yolo26/actions/workflows/ci.yml)
+[![CI](https://github.com/MadLad10/AUV-Vision-Pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/MadLad10/AUV-Vision-Pipeline/actions/workflows/ci.yml)
 
 The complete perception stack of BRACU Duburi's autonomous underwater vehicle at **RoboSub
 2026**. It goes from raw dive video to a pruned, TensorRT-compiled detector, and then to a
