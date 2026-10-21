@@ -125,7 +125,7 @@ def cmd_train(args) -> int:
         return 2
 
     cfg = _cfg_from_args(args)
-    ui.banner("BRACU Duburi · AUV vision pipeline", f"train · preset {args.preset} · augment {cfg['augment']}")
+    ui.banner("AUV vision pipeline", f"train · preset {args.preset} · augment {cfg['augment']}")
     report = _dataset_ok(args.data)
     print_config(cfg, args.data, args.project)
     if not report.ok:
@@ -228,7 +228,7 @@ def cmd_run(args) -> int:
     root = Path(args.project) / f"{cfg['name']}_{time.strftime('%Y%m%d-%H%M%S')}"
     skip = set(args.skip)
     total = 6
-    ui.banner("BRACU Duburi · AUV vision pipeline — full run", f"preset {args.preset} · output {root}")
+    ui.banner("AUV vision pipeline — full run", f"preset {args.preset} · output {root}")
 
     ui.stage(1, total, "Dataset check")
     report = _dataset_ok(args.data)
@@ -295,7 +295,7 @@ def cmd_run(args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m auv_pipeline",
-        description="BRACU Duburi AUV vision pipeline: underwater augmentation → training → pruning → TensorRT",
+        description="AUV vision pipeline: underwater augmentation → training → pruning → TensorRT",
         epilog=EXAMPLES, formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=f"auv_pipeline {__version__}")

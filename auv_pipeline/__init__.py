@@ -1,4 +1,4 @@
-"""BRACU Duburi AUV vision pipeline.
+"""AUV vision pipeline.
 
 Stages (each is a subcommand of ``python -m auv_pipeline``):
 

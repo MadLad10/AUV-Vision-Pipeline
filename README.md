@@ -1,16 +1,15 @@
-# BRACU Duburi — AUV Vision Pipeline
+# AUV Vision Pipeline
 
 [![CI](https://github.com/MadLad10/BRACU-Duburi-AUV-Vision-Pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/MadLad10/BRACU-Duburi-AUV-Vision-Pipeline/actions/workflows/ci.yml)
 
-The complete perception stack of BRACU Duburi's autonomous underwater vehicle at **RoboSub
-2026**. It goes from raw dive video to a pruned, TensorRT-compiled detector, and then to a
+The complete perception stack of an autonomous underwater vehicle (AUV). It goes from raw dive video to a pruned, TensorRT-compiled detector, and then to a
 ROS 2 node that detects and tracks competition targets in real time on a **Jetson Orin Nano**
 and feeds steering offsets to the controller.
 
 **Highlights**
 
 - **0.995 mAP50 / up to 0.968 mAP50-95** on gate and torpedo targets, with models fine-tuned
-  on footage from the competition pool in California ([results](#results-robosub-competition-testing-california)).
+  on footage from the competition pool in California ([results](#results-competition-testing-california)).
 - **Physics-based underwater augmentation.** Five custom transforms each reproduce one effect
   of how underwater images form: colour absorption, backscatter, caustics, light falloff and
   marine snow. Ordinary colour jitter covers none of these.
@@ -68,7 +67,7 @@ one of them:
 |---|---|
 | `WaterAttenuation` | Water absorbs red light within metres, then green, so far objects turn blue-green (Beer–Lambert law, with clear / coastal / turbid water types and camera auto-exposure) |
 | `Backscatter` | Light scattered by suspended particles lays an uneven haze over the scene |
-| `Caustics` | Rippling sunlight patterns on the pool floor and on props, which RoboSub's shallow pool has a lot of |
+| `Caustics` | Rippling sunlight patterns on the pool floor and on props, which a shallow competition pool has a lot of |
 | `LightFalloff` | The AUV's own lights leave a bright centre and dark corners |
 | `MarineSnow` | Out-of-focus bright specks from particles close to the camera |
 
@@ -96,7 +95,7 @@ export targets:
 
 | Preset | Model | Role |
 |---|---|---|
-| `yolo11n` | YOLO11n, 2.59M params | The model deployed at RoboSub |
+| `yolo11n` | YOLO11n, 2.59M params | The model deployed in competition |
 | `yolo26n` | YOLO26n | Next-generation nano model, same deployment budget |
 | `yolo26m` | YOLO26m | Accuracy ceiling, and the starting point for pruning down to nano size |
 
@@ -186,8 +185,8 @@ instead of jumping with every frame.
 
 | Mission task | Detector | Classes | Tracker |
 |---|---|---|---|
-| Gate | YOLO11n, fine-tuned at RoboSub | rescue, repair | ByteTrack + EMA smoothing |
-| Torpedo | YOLO11n, fine-tuned at RoboSub | torpedo, blood, hole | ByteTrack + EMA smoothing |
+| Gate | YOLO11n, fine-tuned on competition footage | rescue, repair | ByteTrack + EMA smoothing |
+| Torpedo | YOLO11n, fine-tuned on competition footage | torpedo, blood, hole | ByteTrack + EMA smoothing |
 
 Weights are a launch parameter, so any of these, as `.pt` or as a TensorRT `.engine`, can be
 swapped in without code changes. The node's default is the team's earlier medium-size
@@ -211,10 +210,10 @@ and inpainted results side by side.
 
 ---
 
-## Results: RoboSub Competition Testing, California
+## Results: Competition Testing, California
 
-These models were fine-tuned on footage recorded in the competition pool during the RoboSub
-testing days in California. Each score is measured on that model's own validation set:
+These models were fine-tuned on footage recorded in the competition pool during the
+competition testing days in California. Each score is measured on that model's own validation set:
 images from the same dives, held out from training.
 
 - **Precision** is how many detections were correct.
@@ -263,7 +262,7 @@ configs/
   augment/underwater.yaml       augmentation profiles
   train/*.yaml                  training presets
 ros2/
-  duburi_vision/vision_node.py  on-vehicle detection + ByteTrack node
+  auv_vision/vision_node.py     on-vehicle detection + ByteTrack node
   custom_interfaces/msg/        CameraMsg definition
 infer_auv.py                  tracking on recorded dives (+ optional inpainting)
 split_video.py  split_dataset.py  prepare_dataset.py  tune_yolo.py    data preparation and tuning

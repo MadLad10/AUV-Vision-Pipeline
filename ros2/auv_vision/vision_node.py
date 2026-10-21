@@ -18,7 +18,6 @@ Parameters (ros2 run ... --ros-args -p name:=value):
     tracker       Ultralytics tracker config (default bytetrack.yaml)
     show          show the annotated window (default true)
 
-Originally `simulator/vision_node.py` in Duburi_ws (entry point `vision_node`).
 """
 
 import os
@@ -37,7 +36,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy  # noqa: E402
 from ultralytics.models.yolo.model import YOLO  # noqa: E402
 from ultralytics.utils.plotting import Annotator  # noqa: E402
 
-DEFAULT_GATE_WEIGHTS = "/home/duburi-jetson/workspaces/duburi_ws/src/duburi_vision/models/gate_flare_medium_100ep.pt"
+DEFAULT_GATE_WEIGHTS = "models/gate_flare_medium_100ep.pt"  # override with -p gate_weights:=<path>
 
 # camera name (from vision_topic) -> V4L2 device index
 CAMERA_DEVICES = {"front": 0}
